@@ -93,6 +93,7 @@ app.post("/login", async (req, res, next) => {
     if (user && (await bcrypt.compare(details.password, user.password))) {
       const token = jwt.sign({ userId: user._id }, secret);
       const verificationLink = `http://localhost:3000/api/verify-mfa?token=${token}&userId=${user._id}`;
+
       const messageData = {
         Destination: {
           ToAddresses: [user.email],
@@ -141,14 +142,45 @@ app.post("/register", async (req, res, next) => {
     const user = await User.findOne({ username: details.username });
     if (!user) {
       const hashedPass = await bcrypt.hash(details.password, 10);
-      const newUser = new User({
-        username: details.username,
-        email: details.email,
-        password: hashedPass,
-      });
-      await newUser.save();
-      const token = jwt.sign({ userId: newUser._id }, secret);
-      res.json({ valid: true, userId: newUser._id, token });
+
+      const token = jwt.sign({ username: details.username }, secret);
+      const otp = token.slice(-6);
+
+      const messageData = {
+        Destination: {
+          ToAddresses: [details.email],
+        },
+        Message: {
+          Body: {
+            Text: {
+              Data: `Use otp below\n\notp: ${otp}`,
+              Charset: "UTF-8",
+            },
+          },
+          Subject: {
+            Data: "Account verification",
+            Charset: "UTF-8",
+          },
+        },
+        Source: source,
+      };
+      const command = new SendEmailCommand(messageData);
+
+      sesClient
+        .send(command)
+        .then(() => {
+          res.status(200).json({
+            valid: true,
+            username: details.username,
+            email: details.email,
+            password: hashedPass,
+            token,
+            message: "Please check the otp in your email",
+          });
+        })
+        .catch((error) => {
+          res.status(500).json(error.message);
+        });
     } else {
       res.json({ valid: false });
     }
@@ -239,6 +271,41 @@ app.get("/verify-mfa", async (req, res, next) => {
         });
       } else {
         res.redirect(`http://localhost:3000?token=${token}&userId=${userId}`);
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/verify-mfa", async (req, res, next) => {
+  try {
+    const { token, username, password, email, otp } = req.body;
+    jwt.verify(token, secret, async (err, decode) => {
+      if (err) {
+        res.json({
+          message: "unauthenticated account, please fill correct details",
+        });
+      } else {
+        if (otp === token.slice(-6)) {
+          const newUser = new User({
+            username: username,
+            email: email,
+            password: password,
+          });
+          await newUser.save();
+          res.json({
+            valid: true,
+            token,
+            user: newUser.username,
+            userId: newUser._id,
+            message: "otp verified successfully",
+          });
+        } else {
+          res.json({
+            message: "please fill correct otp",
+          });
+        }
       }
     });
   } catch (error) {
