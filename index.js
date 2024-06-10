@@ -84,6 +84,28 @@ const authenticate = (req, res, next) => {
   });
 };
 
+const messageCreator = (text, email) => {
+  const messageData = {
+    Destination: {
+      ToAddresses: [email],
+    },
+    Message: {
+      Body: {
+        Text: {
+          Data: text,
+          Charset: "UTF-8",
+        },
+      },
+      Subject: {
+        Data: "Account verification",
+        Charset: "UTF-8",
+      },
+    },
+    Source: source,
+  };
+  return messageData;
+};
+
 app.post("/login", async (req, res, next) => {
   try {
     const details = req.body;
@@ -94,26 +116,12 @@ app.post("/login", async (req, res, next) => {
       const token = jwt.sign({ userId: user._id }, secret, { expiresIn: "1m" });
       const verificationLink = `http://localhost:3000/api/verify-mfa?token=${token}&userId=${user._id}`;
 
-      const messageData = {
-        Destination: {
-          ToAddresses: [user.email],
-        },
-        Message: {
-          Body: {
-            Text: {
-              Data: `Please click this link to log in to your account ${verificationLink}`,
-              Charset: "UTF-8",
-            },
-          },
-          Subject: {
-            Data: "Account verification",
-            Charset: "UTF-8",
-          },
-        },
-        Source: source,
-      };
-      const command = new SendEmailCommand(messageData);
+      const messageData = messageCreator(
+        `Please click this link to log in to your account ${verificationLink}`,
+        (email = user.email)
+      );
 
+      const command = new SendEmailCommand(messageData);
       sesClient
         .send(command)
         .then(() => {
@@ -147,25 +155,11 @@ app.post("/register", async (req, res, next) => {
         expiresIn: 30,
       });
       const otp = token.slice(-6);
+      const messageData = messageCreator(
+        `Use otp below\n\notp: ${otp}`,
+        (email = details.email)
+      );
 
-      const messageData = {
-        Destination: {
-          ToAddresses: [details.email],
-        },
-        Message: {
-          Body: {
-            Text: {
-              Data: `Use otp below\n\notp: ${otp}`,
-              Charset: "UTF-8",
-            },
-          },
-          Subject: {
-            Data: "Account verification",
-            Charset: "UTF-8",
-          },
-        },
-        Source: source,
-      };
       const command = new SendEmailCommand(messageData);
 
       sesClient
@@ -201,26 +195,12 @@ app.post("/forget", async (req, res, next) => {
     if (user) {
       const token = jwt.sign({ userId: user._id }, secret, { expiresIn: "1m" });
       const verificationLink = `http://localhost:3000/api/verify-email?token=${token}&userId=${user._id}`;
-      const messageData = {
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Body: {
-            Text: {
-              Data: `Please click this link to reset your password ${verificationLink}`,
-              Charset: "UTF-8",
-            },
-          },
-          Subject: {
-            Data: "Account verification",
-            Charset: "UTF-8",
-          },
-        },
-        Source: source,
-      };
-      const command = new SendEmailCommand(messageData);
+      const messageData = messageCreator(
+        `Please click this link to reset your password ${verificationLink}`,
+        email
+      );
 
+      const command = new SendEmailCommand(messageData);
       sesClient
         .send(command)
         .then(() => {
@@ -232,7 +212,9 @@ app.post("/forget", async (req, res, next) => {
           });
         })
         .catch((error) => {
-          res.status(500).json({ message: error.message });
+          res
+            .status(500)
+            .json({ message: error.message + " error in sending request" });
         });
     } else {
       res.json({
@@ -304,7 +286,7 @@ app.get("/verify-user", async (req, res, next) => {
   }
 });
 
-app.post("/verify-mfa", async (req, res, next) => {
+app.post("/verify-mfa", authenticate, async (req, res, next) => {
   try {
     const { token, username, password, email, otp } = req.body;
     jwt.verify(token, secret, async (err, decode) => {
@@ -410,7 +392,9 @@ app.get("/tasks", authenticate, async (req, res, next) => {
 
 app.use((error, req, res, next) => {
   if (error) {
-    res.status(500).json({ message: error.message });
+    res
+      .status(500)
+      .json({ message: error.message + " error middleware works" });
   } else {
     res.json({ message: "internal server error!" });
   }
