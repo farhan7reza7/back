@@ -91,7 +91,7 @@ app.post("/login", async (req, res, next) => {
       username: details.username,
     });
     if (user && (await bcrypt.compare(details.password, user.password))) {
-      const token = jwt.sign({ userId: user._id }, secret);
+      const token = jwt.sign({ userId: user._id }, secret, { expiresIn: "1m" });
       const verificationLink = `http://localhost:3000/api/verify-mfa?token=${token}&userId=${user._id}`;
 
       const messageData = {
@@ -125,10 +125,10 @@ app.post("/login", async (req, res, next) => {
           });
         })
         .catch((error) => {
-          res.status(500).json(error.message);
+          res.status(500).json({ message: error.message });
         });
     } else {
-      res.json({ valid: false });
+      res.json({ valid: false, message: "Please fill correct details" });
     }
   } catch (error) {
     next(error);
@@ -143,7 +143,9 @@ app.post("/register", async (req, res, next) => {
     if (!user) {
       const hashedPass = await bcrypt.hash(details.password, 10);
 
-      const token = jwt.sign({ username: details.username }, secret);
+      const token = jwt.sign({ username: details.username }, secret, {
+        expiresIn: 30,
+      });
       const otp = token.slice(-6);
 
       const messageData = {
@@ -175,14 +177,17 @@ app.post("/register", async (req, res, next) => {
             email: details.email,
             password: hashedPass,
             token,
-            message: "Please check the otp in your email",
+            message: "Please check the otp in your linked email",
           });
         })
         .catch((error) => {
           res.status(500).json(error.message);
         });
     } else {
-      res.json({ valid: false });
+      res.json({
+        valid: false,
+        message: "Username already exists, please choose another username",
+      });
     }
   } catch (error) {
     next(error);
@@ -194,8 +199,8 @@ app.post("/forget", async (req, res, next) => {
     const { email, username } = req.body;
     const user = await User.findOne({ username: username, email: email });
     if (user) {
-      const token = jwt.sign({ userId: user._id }, secret, { expiresIn: "1h" });
-      const verificationLink = `http://localhost:3000/api/verify-email?token=${token}&user=${user._id}`;
+      const token = jwt.sign({ userId: user._id }, secret, { expiresIn: "1m" });
+      const verificationLink = `http://localhost:3000/api/verify-email?token=${token}&userId=${user._id}`;
       const messageData = {
         Destination: {
           ToAddresses: [email],
@@ -223,7 +228,7 @@ app.post("/forget", async (req, res, next) => {
             valid: true,
             userId: user._id,
             token,
-            message: "Please check the verification link in your email",
+            message: "Please click the verification link in your email",
           });
         })
         .catch((error) => {
@@ -231,6 +236,7 @@ app.post("/forget", async (req, res, next) => {
         });
     } else {
       res.json({
+        valid: false,
         message: "Please fill correct details",
       });
     }
@@ -266,9 +272,10 @@ app.get("/verify-mfa", async (req, res, next) => {
     const { token, userId } = req.query;
     jwt.verify(token, secret, (err, decode) => {
       if (err) {
-        res.json({
+        /*res.json({
           message: "unauthenticated account, please fill correct details",
-        });
+        });*/
+        res.redirect(`http://localhost:3000/timeout`);
       } else {
         res.redirect(`http://localhost:3000?token=${token}&userId=${userId}`);
       }
@@ -284,7 +291,8 @@ app.post("/verify-mfa", async (req, res, next) => {
     jwt.verify(token, secret, async (err, decode) => {
       if (err) {
         res.json({
-          message: "unauthenticated account, please fill correct details",
+          valid: false,
+          message: "otp expires, please authenticate firstly, and submit otp",
         });
       } else {
         if (otp === token.slice(-6)) {
@@ -302,9 +310,7 @@ app.post("/verify-mfa", async (req, res, next) => {
             message: "otp verified successfully",
           });
         } else {
-          res.json({
-            message: "please fill correct otp",
-          });
+          res.json({ valid: false, message: "please fill correct otp" });
         }
       }
     });
@@ -314,12 +320,13 @@ app.post("/verify-mfa", async (req, res, next) => {
 });
 
 app.get("/verify-email", async (req, res, next) => {
-  const { token, user: userId } = req.query;
+  const { token, userId } = req.query;
   jwt.verify(token, secret, (err, decode) => {
     if (err) {
-      res.json({
+      /*res.json({
         message: "unauthenticated account, please fill correct details",
-      });
+      });*/
+      res.redirect(`http://localhost:3000/timeout`);
     } else {
       res.redirect(
         `http://localhost:3000/reset?token=${token}&userId=${userId}`
