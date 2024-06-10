@@ -54,17 +54,16 @@ const Task = mongoose.model("Task", {
   },
 });
 
+const app = express();
+
+app.use(cors());
+app.use(bodyParser.json());
+
 async function deleter() {
   await User.deleteMany();
   const data = await User.find();
   console.log("users: ", data);
 }
-//deleter();
-
-const app = express();
-
-app.use(cors());
-app.use(bodyParser.json());
 
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
