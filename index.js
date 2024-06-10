@@ -181,7 +181,7 @@ app.post("/register", async (req, res, next) => {
           });
         })
         .catch((error) => {
-          res.status(500).json(error.message);
+          res.status(500).json({ message: error.message });
         });
     } else {
       res.json({
@@ -232,7 +232,7 @@ app.post("/forget", async (req, res, next) => {
           });
         })
         .catch((error) => {
-          res.status(500).json(error.message);
+          res.status(500).json({ message: error.message });
         });
     } else {
       res.json({
@@ -272,12 +272,31 @@ app.get("/verify-mfa", async (req, res, next) => {
     const { token, userId } = req.query;
     jwt.verify(token, secret, (err, decode) => {
       if (err) {
-        /*res.json({
-          message: "unauthenticated account, please fill correct details",
-        });*/
         res.redirect(`http://localhost:3000/timeout`);
       } else {
-        res.redirect(`http://localhost:3000?token=${token}&userId=${userId}`);
+        const tokenz = jwt.sign({ userId }, secret);
+        res.redirect(`http://localhost:3000?token=${tokenz}&userId=${userId}`);
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/verify-user", async (req, res, next) => {
+  try {
+    const { token, userId } = req.query;
+    jwt.verify(token, secret, async (err, decode) => {
+      if (err) {
+        res.json({ valid: false });
+      } else {
+        const user = await User.findById(userId);
+        if (user) {
+          const tokenz = jwt.sign({ userId }, secret);
+          res.json({ valid: true, token: tokenz });
+        } else {
+          res.json({ valid: false });
+        }
       }
     });
   } catch (error) {
@@ -292,7 +311,10 @@ app.post("/verify-mfa", async (req, res, next) => {
       if (err) {
         res.json({
           valid: false,
-          message: "otp expires, please authenticate firstly, and submit otp",
+          message:
+            otp === token.slice(-6)
+              ? "otp expired, please generate new otp"
+              : "please enter correct otp",
         });
       } else {
         if (otp === token.slice(-6)) {
@@ -302,9 +324,11 @@ app.post("/verify-mfa", async (req, res, next) => {
             password: password,
           });
           await newUser.save();
+
+          const tokenz = jwt.sign({ userId: newUser._id }, secret);
           res.json({
             valid: true,
-            token,
+            token: tokenz,
             user: newUser.username,
             userId: newUser._id,
             message: "otp verified successfully",
@@ -323,9 +347,6 @@ app.get("/verify-email", async (req, res, next) => {
   const { token, userId } = req.query;
   jwt.verify(token, secret, (err, decode) => {
     if (err) {
-      /*res.json({
-        message: "unauthenticated account, please fill correct details",
-      });*/
       res.redirect(`http://localhost:3000/timeout`);
     } else {
       res.redirect(
@@ -379,8 +400,9 @@ app.get("/tasks", authenticate, async (req, res, next) => {
     const user = await User.findById(userId).populate("tasks");
     if (!user) {
       res.status(404).json({ message: "user not found" });
+    } else {
+      res.status(200).json({ tasks: user.tasks });
     }
-    res.status(200).json(user.tasks);
   } catch (error) {
     next(error);
   }
@@ -388,10 +410,9 @@ app.get("/tasks", authenticate, async (req, res, next) => {
 
 app.use((error, req, res, next) => {
   if (error) {
-    console.log(error.message);
-    res.status(500).json({ message: "internal server error" });
+    res.status(500).json({ message: error.message });
   } else {
-    res.json({ message: "not error , other issue" });
+    res.json({ message: "internal server error!" });
   }
 });
 
