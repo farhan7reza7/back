@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "paths": {
+    "/tasks": {
+      "name": "/tasks",
+      "lambdaFunction": "backendapp8227cd77",
+      "permissions": {
+        "setting": "protected",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ],
+        "guest": [
+          "read"
+        ]
+      }
+    }
+  }
+}
